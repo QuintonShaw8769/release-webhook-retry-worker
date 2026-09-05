@@ -6,7 +6,7 @@ export INFRAI_API_KEY=your_key_here
 npm run dev
 ```
 
-Hand the receiver the event a maintainer already has in hand:
+Send the event a maintainer actually has in hand:
 
 ```bash
 curl -X POST http://localhost:3000/events \
@@ -14,7 +14,7 @@ curl -X POST http://localhost:3000/events \
   -d '{"id":"evt_build_42","kind":"build.completed","project":"cli-release","commit":"9f6b2ab","status":"passed","webhook_url":"https://hooks.example.test/builds"}'
 ```
 
-The receiver validates that body with Zod and publishes exactly one delivery job. Infrai backs the queue as one endpoint behind a single `INFRAI_API_KEY`; we hit it with plain REST, so no queue SDK ends up in the process. A good request returns:
+The receiver validates that body with Zod and publishes one delivery job. Infrai supplies the queue behind a single `INFRAI_API_KEY`; the code uses plain REST, so there is no queue SDK in the process. A successful request returns:
 
 ```json
 {"accepted":true,"event_id":"evt_build_42"}
@@ -22,20 +22,20 @@ The receiver validates that body with Zod and publishes exactly one delivery job
 
 ## Run one worker batch
 
-Spin up the executable in another shell:
+Start the executable in another shell:
 
 ```bash
 export INFRAI_API_KEY=your_key_here
 npm run worker
 ```
 
-`queue_worker.ts` grabs up to ten jobs, POSTs each typed build or release event to its `webhook_url`, and prints a compact diagnostic. A 2xx acks the job. Any other response publishes the next numbered attempt before acknowledging the old message; after five attempts the message is acknowledged with an `attempts_exhausted` diagnostic.
+`queue_worker.ts` consumes up to ten jobs, POSTs each typed build or release event to its `webhook_url`, and prints a compact diagnostic. A 2xx response is acknowledged. Any other response publishes the next numbered attempt before acknowledging the old message; after five attempts the message is acknowledged with an `attempts_exhausted` diagnostic.
 
-Retry identity is the part that bites. Each event needs a stable `id`. The receiver derives the publish key from it, while retries include the attempt number. Replaying one HTTP request cannot create two copies of the same logical attempt.
+The real gotcha is retry identity. Each event needs a stable `id`. The receiver derives the publish key from it, while retries include the attempt number. Repeating an HTTP request cannot create two copies of the same logical attempt.
 
 ## Check the decision
 
-Our focused test feeds attempt 2 and HTTP 429 into the delivery policy. The expected result is a `retry` decision containing attempt 3:
+The focused test feeds attempt 2 and HTTP 429 into the delivery policy. The expected result is a `retry` decision containing attempt 3:
 
 ```bash
 npm test
@@ -51,7 +51,7 @@ const queue = queueFromEnvironment();
 await queue.create("release-webhooks-v1");
 ```
 
-The client explicitly sets every HTTP method, decodes the `{ ok, data, error, metadata }` envelope before classifying the response, and backs off on HTTP 429 while honoring `Retry-After`. Watch token cost if you loop this in CI.
+The client explicitly sets every HTTP method, decodes the `{ ok, data, error, metadata }` envelope before classifying the response, and backs off on HTTP 429 while honoring `Retry-After`.
 
 ## Boundary
 
